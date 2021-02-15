@@ -150,3 +150,38 @@ class TransformerModel(nn.Module):
         output = self.transformer_encoder(src, self.src_mask)
         output = self.decoder(output)
         return F.log_softmax(output, dim=-1)
+
+
+class FNNModel(nn.Module):
+
+
+    def __init__(self, rnn_type, ntoken, ninp, nhid, nlayers, dropout=0.5, tie_weights=False):
+        super(FNNModel, self).__init__()
+        self.ntoken = ntoken
+        self.drop = nn.Dropout(dropout)
+        self.lin1 = nn.Linear(ninp, nhid)
+        self.encoder = nn.Embedding(ntoken, ninp)
+        self.decoder = nn.Linear(nhid, ntoken)
+
+        self.init_weights()
+
+        self.nhid = nhid
+        self.nlayers = nlayers
+
+    def init_weights(self):
+        initrange = 0.1
+        nn.init.uniform_(self.encoder.weight, -initrange, initrange)
+        nn.init.zeros_(self.decoder.weight)
+        nn.init.uniform_(self.decoder.weight, -initrange, initrange)
+
+    def forward(self, input):
+        #embeds = self.encoder(input).view((1, -1))
+        embeds = self.drop(self.encoder(input))
+        output = torch.tanh(self.lin1(embeds))
+        decoded = self.decoder(output)
+        decoded = decoded.view(-1, self.ntoken)
+        return F.log_softmax(decoded, dim=1)
+
+    def init_hidden(self, bsz):
+        weight = next(self.parameters())
+        return weight.new_zeros(self.nlayers, bsz, self.nhid)

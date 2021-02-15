@@ -58,7 +58,7 @@ args = parser.parse_args()
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():
     if not args.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+        args.cuda = True
 
 device = torch.device("cuda" if args.cuda else "cpu")
 

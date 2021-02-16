@@ -32,7 +32,7 @@ parser.add_argument('--batch_size', type=int, default=20, metavar='N',
                     help='batch size')
 parser.add_argument('--bptt', type=int, default=35,
                     help='sequence length')
-parser.add_argument('--dropout', type=float, default=0.2,
+parser.add_argument('--dropout', type=float, default=0.5,
                     help='dropout applied to layers (0 = no dropout)')
 parser.add_argument('--tied', action='store_true',
                     help='tie the word embedding and softmax weights')
@@ -99,6 +99,7 @@ test_data = batchify(corpus.test, eval_batch_size)
 ###############################################################################
 
 ntokens = len(corpus.dictionary)
+
 if args.model == 'Transformer':
     model = model.TransformerModel(ntokens, args.emsize, args.nhead, args.nhid, args.nlayers, args.dropout).to(device)
 else:
@@ -110,29 +111,13 @@ criterion = nn.NLLLoss()
 # Training code
 ###############################################################################
 
-def repackage_hidden(h):
-    """Wraps hidden states in new Tensors, to detach them from their history."""
 
-    if isinstance(h, torch.Tensor):
-        return h.detach()
-    else:
-        return tuple(repackage_hidden(v) for v in h)
-
-
-# get_batch subdivides the source data into chunks of length args.bptt.
-# If source is equal to the example output of the batchify function, with
-# a bptt-limit of 2, we'd get the following two Variables for i = 0:
-# ┌ a g m s ┐ ┌ b h n t ┐
-# └ b h n t ┘ └ c i o u ┘
-# Note that despite the name of the function, the subdivison of data is not
-# done along the batch dimension (i.e. dimension 1), since that was handled
-# by the batchify function. The chunks are along dimension 0, corresponding
-# to the seq_len dimension in the LSTM.
 
 def get_batch(source, i):
     seq_len = min(args.bptt, len(source) - 1 - i)
     data = source[i:i+seq_len]
     target = source[i+1:i+1+seq_len].view(-1)
+    #target = source[i+seq_len:i+1+seq_len]
     return data, target
 
 
@@ -150,8 +135,8 @@ def evaluate(data_source):
                 output = model(data)
                 output = output.view(-1, ntokens)
             else:
-                output, hidden = model(data, hidden)
-                hidden = repackage_hidden(hidden)
+                output = model(data)
+                
             total_loss += len(data) * criterion(output, targets).item()
     return total_loss / (len(data_source) - 1)
 
@@ -162,26 +147,16 @@ def train():
     total_loss = 0.
     start_time = time.time()
     ntokens = len(corpus.dictionary)
-    optimizer = torch.optim.Adam(model.parameters(), args.lr)
+    optimizer = torch.optim.Adam(model.parameters(), args.lr,amsgrad=True)
     if args.model != 'Transformer':
         hidden = model.init_hidden(args.batch_size)
     for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
         data, targets = get_batch(train_data, i)
-        # Starting each batch, we detach the hidden state from how it was previously produced.
-        # If we didn't, the model would try backpropagating all the way to start of the dataset.
         model.zero_grad()
-        # if args.model == 'Transformer':
-        #     output = model(data)
-        #     output = output.view(-1, ntokens)
-        # else:
-        #hidden = repackage_hidden(hidden)
         output = model(data)
         loss = criterion(output, targets)
         loss.backward()
         optimizer.step()
-
-        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-        #torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
         for p in model.parameters():
             p.data.add_(p.grad, alpha=-lr)
 
@@ -229,9 +204,7 @@ try:
             with open(args.save, 'wb') as f:
                 torch.save(model, f)
             best_val_loss = val_loss
-        # else:
-        #     # Anneal the learning rate if no improvement has been seen in the validation dataset.
-        #     lr /= 4.0
+        
 except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')
@@ -239,11 +212,7 @@ except KeyboardInterrupt:
 # Load the best saved model.
 with open(args.save, 'rb') as f:
     model = torch.load(f)
-    # after load the rnn params are not a continuous chunk of memory
-    # this makes them a continuous chunk, and will speed up forward pass
-    # Currently, only rnn model supports flatten_parameters function.
-    if args.model in ['RNN_TANH', 'RNN_RELU', 'LSTM', 'GRU']:
-        model.rnn.flatten_parameters()
+   
 
 # Run on test data.
 test_loss = evaluate(test_data)

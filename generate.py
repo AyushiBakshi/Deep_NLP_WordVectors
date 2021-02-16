@@ -20,13 +20,13 @@ parser.add_argument('--checkpoint', type=str, default='./model.pt',
                     help='model checkpoint to use')
 parser.add_argument('--outf', type=str, default='generated.txt',
                     help='output file for generated text')
-parser.add_argument('--words', type=int, default='1000',
+parser.add_argument('--words', type=int, default='100',
                     help='number of words to generate')
 parser.add_argument('--seed', type=int, default=1111,
                     help='random seed')
 parser.add_argument('--cuda', action='store_true',
                     help='use CUDA')
-parser.add_argument('--temperature', type=float, default=1.0,
+parser.add_argument('--temperature', type=float, default=2,
                     help='temperature - higher will increase diversity')
 parser.add_argument('--log-interval', type=int, default=100,
                     help='reporting interval')
@@ -36,7 +36,7 @@ args = parser.parse_args()
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():
     if not args.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+        args.cuda = True
 
 device = torch.device("cuda" if args.cuda else "cpu")
 
@@ -65,7 +65,7 @@ with open(args.outf, 'w') as outf:
                 word_tensor = torch.Tensor([[word_idx]]).long().to(device)
                 input = torch.cat([input, word_tensor], 0)
             else:
-                output, hidden = model(input, hidden)
+                output= model(input)
                 word_weights = output.squeeze().div(args.temperature).exp().cpu()
                 word_idx = torch.multinomial(word_weights, 1)[0]
                 input.fill_(word_idx)

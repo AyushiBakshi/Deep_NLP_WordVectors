@@ -167,6 +167,7 @@ class FNNModel(nn.Module):
 
         self.nhid = nhid
         self.nlayers = nlayers
+        self.ninp = ninp
 
     def init_weights(self):
         initrange = 0.1
